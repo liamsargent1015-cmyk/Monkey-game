@@ -7,9 +7,9 @@ const LEVEL_CONFIG = {
     5: { hp: 150, damage: 50, weapon: 'Boulder', speed: 1, xpRequired: 300, knockback: 15, effect: 'splash', damageType: 'area' },
     6: { hp: 200, damage: 80, weapon: 'Lightsaber', speed: 1, xpRequired: 350, knockback: 5, effect: 'slice', damageType: 'energy' },
     7: { hp: 700, damage: 100, weapon: 'Mech Suit', speed: 1, xpRequired: 400, knockback: 20, effect: 'stomp', damageType: 'area' },
-    8: { hp: 400, damage: 10, weapon: 'Fist (8x Speed)', speed: 8, xpRequired: 450, knockback: 0, effect: 'rapid', damageType: 'physical' },
+    8: { hp: 400, damage: 10, weapon: 'Fist (8x)', speed: 8, xpRequired: 450, knockback: 0, effect: 'rapid', damageType: 'physical' },
     9: { hp: 1000, damage: 150, weapon: 'Nerf Gun', speed: 1, xpRequired: 500, knockback: 10, effect: 'blast', damageType: 'projectile' },
-    10: { hp: 2000, damage: 200, weapon: 'Godzilla Breath', speed: 1, xpRequired: 999999, knockback: 25, effect: 'laser', damageType: 'laser' }
+    10: { hp: 2000, damage: 200, weapon: 'Godzilla', speed: 1, xpRequired: 999999, knockback: 25, effect: 'laser', damageType: 'laser' }
 };
 
 const BLOON_CONFIG = {
@@ -21,8 +21,7 @@ const BLOON_CONFIG = {
 let scene, camera, renderer;
 let monkey, monkeyHealth, monkeyMaxHealth, currentLevel = 1, currentXP = 0, kills = 0, currentRound = 1;
 let bloons = [];
-let keys = {};
-let mouseX = 0, mouseY = 0;
+let moveUp = false, moveDown = false, moveLeft = false, moveRight = false;
 let isAttacking = false;
 let lastAttackTime = 0;
 let attackCooldown = 200;
@@ -43,8 +42,9 @@ function init(selectedMap) {
     camera.position.set(0, 3, 10);
     camera.lookAt(0, 1, 0);
     
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowShadowMap;
     document.body.appendChild(renderer.domElement);
@@ -77,15 +77,13 @@ function init(selectedMap) {
     ground.receiveShadow = true;
     scene.add(ground);
     
-    // Add some environmental objects
+    // Add environmental objects
     if (mapType === 'beach') {
-        // Palm trees
         for (let i = 0; i < 5; i++) {
             addPalmTree(-150 + i * 75, 0, -150);
             addPalmTree(-150 + i * 75, 0, 150);
         }
     } else {
-        // Trees
         for (let i = 0; i < 8; i++) {
             addTree(-150 + i * 50, 0, -150 + Math.random() * 50);
             addTree(-150 + i * 50, 0, 150 - Math.random() * 50);
@@ -97,14 +95,10 @@ function init(selectedMap) {
     monkeyHealth = LEVEL_CONFIG[currentLevel].hp;
     monkeyMaxHealth = LEVEL_CONFIG[currentLevel].hp;
     
-    // Input
-    window.addEventListener('keydown', (e) => { keys[e.key.toLowerCase()] = true; });
-    window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
-    window.addEventListener('mousemove', (e) => {
-        mouseX = (e.clientX / window.innerWidth) * 2 - 1;
-        mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
-    });
-    window.addEventListener('click', () => { isAttacking = true; });
+    // Mobile touch handlers
+    setupTouchControls();
+    
+    // Resize handler
     window.addEventListener('resize', () => {
         camera.aspect = window.innerWidth / window.innerHeight;
         camera.updateProjectionMatrix();
@@ -115,10 +109,58 @@ function init(selectedMap) {
     gameLoop();
 }
 
+function setupTouchControls() {
+    // Joystick support
+    const joystickContainer = document.getElementById('joystickContainer');
+    const joystickKnob = document.getElementById('joystickKnob');
+    let joystickActive = false;
+
+    if (joystickContainer) {
+        joystickContainer.addEventListener('touchstart', (e) => {
+            joystickActive = true;
+            e.preventDefault();
+        }, { passive: false });
+
+        joystickContainer.addEventListener('touchmove', (e) => {
+            if (!joystickActive) return;
+            e.preventDefault();
+            
+            const touch = e.touches[0];
+            const rect = joystickContainer.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            
+            const x = touch.clientX - centerX;
+            const y = touch.clientY - centerY;
+            const distance = Math.sqrt(x * x + y * y);
+            const maxDistance = rect.width / 2 - 25;
+            
+            const angle = Math.atan2(y, x);
+            const limitedDistance = Math.min(distance, maxDistance);
+            
+            const knobX = Math.cos(angle) * limitedDistance;
+            const knobY = Math.sin(angle) * limitedDistance;
+            
+            joystickKnob.style.transform = `translate(calc(-50% + ${knobX}px), calc(-50% + ${knobY}px))`;
+            
+            // Update movement based on joystick
+            moveUp = y < -maxDistance * 0.5;
+            moveDown = y > maxDistance * 0.5;
+            moveLeft = x < -maxDistance * 0.5;
+            moveRight = x > maxDistance * 0.5;
+        }, { passive: false });
+
+        document.addEventListener('touchend', () => {
+            joystickActive = false;
+            joystickKnob.style.transform = 'translate(-50%, -50%)';
+            moveUp = moveDown = moveLeft = moveRight = false;
+        });
+    }
+}
+
 function createMonkey() {
     if (monkey) scene.remove(monkey);
     
-    // Monkey body
     const group = new THREE.Group();
     
     // Head
@@ -145,10 +187,8 @@ function createMonkey() {
     const pupilMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
     const leftPupil = new THREE.Mesh(pupilGeometry, pupilMaterial);
     leftPupil.position.set(-0.25, 1.8, 0.75);
-    leftPupil.castShadow = true;
     const rightPupil = new THREE.Mesh(pupilGeometry, pupilMaterial);
     rightPupil.position.set(0.25, 1.8, 0.75);
-    rightPupil.castShadow = true;
     group.add(leftPupil, rightPupil);
     
     // Body
@@ -169,7 +209,7 @@ function createMonkey() {
     rightArm.rotation.z = -Math.PI / 4;
     rightArm.castShadow = true;
     group.add(leftArm, rightArm);
-    group.rightArm = rightArm; // For attacking animation
+    group.rightArm = rightArm;
     
     // Legs
     const legGeometry = new THREE.CapsuleGeometry(0.25, 0.8, 8, 8);
@@ -194,7 +234,6 @@ function createMonkey() {
 }
 
 function updateMonkeyWeapon(group) {
-    // Clear old weapon
     while (group.weaponGroup.children.length > 0) {
         group.weaponGroup.remove(group.weaponGroup.children[0]);
     }
@@ -203,38 +242,32 @@ function updateMonkeyWeapon(group) {
     const config = LEVEL_CONFIG[level];
     
     if (level === 1 || level === 8) {
-        // Fist - no visual weapon
         return;
     } else if (level === 2) {
-        // Bat
         const batGeometry = new THREE.BoxGeometry(0.2, 0.15, 3);
         const batMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
         const bat = new THREE.Mesh(batGeometry, batMaterial);
         bat.castShadow = true;
         group.weaponGroup.add(bat);
     } else if (level === 3) {
-        // Spike
         const spikeGeometry = new THREE.ConeGeometry(0.3, 2, 8);
         const spikeMaterial = new THREE.MeshStandardMaterial({ color: 0xA0A0A0, metalness: 0.8 });
         const spike = new THREE.Mesh(spikeGeometry, spikeMaterial);
         spike.castShadow = true;
         group.weaponGroup.add(spike);
     } else if (level === 4) {
-        // Taco
         const tacoGeometry = new THREE.ConeGeometry(0.8, 1.5, 16);
         const tacoMaterial = new THREE.MeshStandardMaterial({ color: 0xFF8C00 });
         const taco = new THREE.Mesh(tacoGeometry, tacoMaterial);
         taco.castShadow = true;
         group.weaponGroup.add(taco);
     } else if (level === 5) {
-        // Boulder
         const boulderGeometry = new THREE.SphereGeometry(0.7, 16, 16);
         const boulderMaterial = new THREE.MeshStandardMaterial({ color: 0x808080, roughness: 0.9 });
         const boulder = new THREE.Mesh(boulderGeometry, boulderMaterial);
         boulder.castShadow = true;
         group.weaponGroup.add(boulder);
     } else if (level === 6) {
-        // Lightsaber
         const saber = new THREE.Group();
         const handleGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.8, 8);
         const handleMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, metalness: 1 });
@@ -249,17 +282,14 @@ function updateMonkeyWeapon(group) {
         saber.add(blade);
         group.weaponGroup.add(saber);
     } else if (level === 7) {
-        // Mech suit - just a visual upgrade on the monkey
         return;
     } else if (level === 9) {
-        // Nerf gun
         const gunGeometry = new THREE.BoxGeometry(0.3, 0.2, 1.5);
         const gunMaterial = new THREE.MeshStandardMaterial({ color: 0xFFFF00 });
         const gun = new THREE.Mesh(gunGeometry, gunMaterial);
         gun.castShadow = true;
         group.weaponGroup.add(gun);
     } else if (level === 10) {
-        // Godzilla - no weapon needed
         return;
     }
 }
@@ -310,9 +340,7 @@ function spawnBloon() {
         attackCooldown: 0
     };
     
-    // Create visual
     if (bloon.specialType === 'arms') {
-        // Big bloon with arms
         const bodyGeom = new THREE.SphereGeometry(1.5, 32, 32);
         const bodyMat = new THREE.MeshStandardMaterial({ color: 0xFF69B4 });
         bloon.mesh = new THREE.Mesh(bodyGeom, bodyMat);
@@ -324,7 +352,6 @@ function spawnBloon() {
         arm2.position.set(1.8, 0.5, 0);
         bloon.mesh.add(arm1, arm2);
     } else if (bloon.specialType === 'rainbow') {
-        // Rainbow bloon
         const rainbowGeom = new THREE.SphereGeometry(2, 32, 32);
         const rainbowMat = new THREE.MeshStandardMaterial({
             color: 0xFF00FF,
@@ -334,7 +361,6 @@ function spawnBloon() {
         });
         bloon.mesh = new THREE.Mesh(rainbowGeom, rainbowMat);
     } else {
-        // Normal bloon
         const geometry = new THREE.SphereGeometry(0.5 * scaleFactor, 32, 32);
         const colors = [0xFF0000, 0x0000FF, 0xFFFF00, 0x00FF00, 0xFF00FF];
         const color = colors[Math.floor(Math.random() * colors.length)];
@@ -353,19 +379,19 @@ function updateMonkey() {
     const speed = 0.5;
     let moved = false;
     
-    if (keys['w']) {
+    if (moveUp) {
         monkey.position.z -= speed;
         moved = true;
     }
-    if (keys['a']) {
+    if (moveLeft) {
         monkey.position.x -= speed;
         moved = true;
     }
-    if (keys['s']) {
+    if (moveDown) {
         monkey.position.z += speed;
         moved = true;
     }
-    if (keys['d']) {
+    if (moveRight) {
         monkey.position.x += speed;
         moved = true;
     }
@@ -374,7 +400,7 @@ function updateMonkey() {
     monkey.position.x = Math.max(-200, Math.min(200, monkey.position.x));
     monkey.position.z = Math.max(-200, Math.min(200, monkey.position.z));
     
-    // Update camera to follow monkey with third-person view
+    // Update camera
     const cameraDistance = 15;
     const cameraHeight = 5;
     camera.position.x = monkey.position.x;
@@ -386,7 +412,6 @@ function updateMonkey() {
     if (isAttacking && Date.now() - lastAttackTime > attackCooldown / LEVEL_CONFIG[currentLevel].speed) {
         lastAttackTime = Date.now();
         performAttack();
-        isAttacking = false;
     }
 }
 
@@ -400,15 +425,13 @@ function performAttack() {
         if (dist < attackRange) {
             bloon.health -= config.damage;
             
-            // Knockback
             if (config.knockback > 0) {
                 const direction = new THREE.Vector3().subVectors(bloon.position, monkey.position).normalize();
                 bloon.position.add(direction.multiplyScalar(config.knockback * 0.1));
             }
             
-            // Visual feedback
             bloon.mesh.scale.set(1.2, 1.2, 1.2);
-            setTimeout(() => { bloon.mesh.scale.set(1, 1, 1); }, 50);
+            setTimeout(() => { if (bloon.mesh) bloon.mesh.scale.set(1, 1, 1); }, 50);
             
             if (bloon.health <= 0) {
                 removeBloon(bloon);
@@ -443,7 +466,6 @@ function updateBloons() {
             }
         }
         
-        // Remove if too far
         if (bloon.position.length() > 300) {
             removeBloon(bloon);
         }
@@ -473,24 +495,17 @@ function checkLevelUp() {
         document.getElementById('hpDisplay').textContent = monkeyHealth;
     }
     
-    // Update XP bar
     const xpPercent = (currentXP / LEVEL_CONFIG[currentLevel].xpRequired) * 100;
     document.getElementById('xpFill').style.width = xpPercent + '%';
-    document.getElementById('xpText').textContent = currentXP + '/' + LEVEL_CONFIG[currentLevel].xpRequired + ' XP';
+    document.getElementById('xpText').textContent = Math.floor(currentXP) + '/' + LEVEL_CONFIG[currentLevel].xpRequired;
 }
 
 function updateRound() {
-    const spawnRate = BLOON_CONFIG.base.spawnRate + (currentRound - 1) * BLOON_CONFIG.scaling.spawnIncrease;
-    
-    if (Math.random() < spawnRate * 0.01) {
-        spawnBloon();
-    }
-    
     document.getElementById('roundDisplay').textContent = currentRound;
 }
 
 function endGame() {
-    document.getElementById('gameOver').style.display = 'block';
+    document.getElementById('gameOver').classList.add('show');
     document.getElementById('finalRound').textContent = currentRound;
     document.getElementById('finalLevel').textContent = currentLevel;
     document.getElementById('finalKills').textContent = kills;
@@ -507,14 +522,12 @@ function gameLoop() {
     updateBloons();
     updateRound();
     
-    // Spawn bloons
     spawnCounter++;
     const spawnRate = 60 / (BLOON_CONFIG.base.spawnRate + (currentRound - 1) * BLOON_CONFIG.scaling.spawnIncrease);
     if (spawnCounter > spawnRate) {
         spawnBloon();
         spawnCounter = 0;
         
-        // Advance round
         if (bloons.length === 0 && Math.random() > 0.9) {
             if (currentRound < 80) {
                 currentRound++;

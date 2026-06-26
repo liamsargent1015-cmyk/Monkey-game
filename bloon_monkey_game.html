@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Bloon Monkey — Level Up!</title>
+<style>
+  html,body { height:100%; margin:0; background:#0b1320; color:#e6eef8; font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+  #game { display:block; margin:0 auto; background:#071022; box-shadow:0 6px 30px rgba(0,0,0,0.6); border-radius:6px;}
+  #hud { width:900px; margin:12px auto 0; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+  .bar { background:#122233; border-radius:6px; padding:8px; flex:1; }
+  .left{ text-align:left; }
+  .right{ text-align:right; }
+  #messages { width:900px; margin:8px auto 18px; color:#bfe0ff; font-size:14px; opacity:0.9; }
+  button { background:#0f7bd3; color:white; padding:8px 12px; border-radius:6px; border:none; cursor:pointer; }
+  button.secondary{ background:#2b3f55; }
+  small.hint { color:#9dbbd6; font-size:12px; display:block; margin-top:6px; }
+  a.credits { color:#8fbfff; text-decoration:none; }
+  #centerOverlay { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); text-align:center; pointer-events:none;}
+  #centerOverlay button { pointer-events:all; margin-top:10px;}
+</style>
+</head>
+<body>
+<div id="hud">
+  <div class="bar left" id="stats"></div>
+  <div style="width:200px;text-align:center">
+    <div style="font-weight:700">Wave <span id="wave">1</span></div>
+    <div id="waveInfo" style="font-size:13px;color:#9fbddf">Get ready...</div>
+  </div>
+  <div class="bar right" id="controls"></div>
+</div>
+<canvas id="game" width="900" height="600"></canvas>
+<div id="messages"></div>
+<div id="centerOverlay"></div>
+
+<script>
+(() => {
+  // Canvas
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // Game state
+  const state = {
+    width: canvas.width,
+    height: canvas.height,
+    keys: {},
+    mouse: { x: 0, y: 0, down: false },
+    running: true,
+    wave: 1,
+    waveTimer: 0,
+    waveDelay: 1.2, // seconds between waves
+    enemies: [],
+    projectiles: [],
+    particles: [],
+    killCount: 0,
+    lastTime: performance.now()/1000,
+    msgTimer: 0
+  };
+
+  // Player
+  const player = {
+    x: canvas.width/2,
+    y: canvas.height/2,
+    radius: 18,
+    speed: 200,
+    level: 1,
+    xp: 0,
+    hp: 100,
+    maxHp: 100,
+    baseDamage: 10,
+    fireRate: 4, // shots per second
+    fireCooldown: 0,
+    invuln: 0
+  };
+
+  const GAME_MAX_LEVEL = 20;
+  const BASE_HP = 100;
+  const MAX_HP_AT_MAX = 2000;
+
+  // Utilities
+  function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+  function rand(min,max){ return Math.random()*(max-min)+min; }
+  function distance(a,b){ return Math.hypot(a.x-b.x,a.y-b.y); }
+
+  // XP and leveling
+  function xpToNext(level){
+    // Increasing XP curve; level 20 has no next
+    return Math.floor(100 * Math.pow(level, 1.45));
+  }
+  function updatePlayerStats(){
+    // HP linearly from BASE_HP to MAX_HP_AT_MAX across levels 1..20
+    const t = (player.level-1)/(GAME_MAX_LEVEL-1);
+    player.maxHp = Math.round(BASE_HP + (MAX_HP_AT_MAX-BASE_HP)*t);
+    // Damage linear from baseDamage to something big
+    player.damage = Math.round(10 + (380-10)*t); // ends ~380 damage at level20
+    // Fire rate slightly increases with level
+    player.fireRate = 4 + Math.round(6 * t); // 4..10 shots/sec
+    // Movement speed slight increase
+    player.speed = 180 + Math.round(80 * t); // 180..260
+  }
+
+  updatePlayerStats();
+  player.hp = player.maxHp;
+
+  // Enemy factory
+  function spawnEnemy(wave){
+    // Bloon types (colors & multipliers)
+    const types = [
+      {color:'#ff6b6b', hpMul:1, speed:70, dmg:6, score:1},
+      {color:'#ffd166', hpMul:1.8, speed:60, dmg:10, score:2},
+      {color:'#6bc1ff', hpMul:3.6, speed:45, dmg:20, score:4}
+    ];
+    // Choose type probability based on wave
+    const p = Math.min(0.5, wave/60); // more mid/strong types later
+    const r = Math.random();
+    let type = types[0];
+    if(r < p*0.4) type = types[1];
+    else if(r < p*0.6) type = types[2];
+
+    const baseHP = 16 + wave*6; // base hp goes up each wave
+    const hp = Math.round(baseHP * type.hpMul * (1 + wave*0.08)); // stronger each wave
+    const speed = Math.max(30, type.speed - wave*0.6 + rand(-8,8));
+    const dmg = Math.round(type.dmg * (1 + wave*0.09));
+    const size = clamp(8 + Math.log(hp)*2, 8, 40);
+
+    // spawn at random edge
+    const side = Math.floor(Math.random()*4);
+    let x,y;
+    if(side===0){ x = -20; y = rand(0, canvas.height); }
+    else if(side===1){ x = canvas.width+20; y = rand(0, canvas.height); }
+    else if(side===2){ x = rand(0, canvas.width); y = -20; }
+    else { x = rand(0, canvas.width); y = canvas.height+20; }
+
+    return {
+      id: Math.random().toString(36).slice(2,9),
+      x, y, vx:0, vy:0,
+      hp, maxHp:hp, color:type.color,
+      speed, dmg, size, score:type.score
+    };
+  }
+
+  function spawnWave(wave){
+    state.enemies = [];
+    const count = 5 + Math.floor(wave * 1.6) + Math.floor(rand(0,wave/3));
+    for(let i=0;i<count;i++) state.enemies.push(spawnEnemy(wave));
+    state.wave = wave;
+    document.getElementById('wave').textContent = wave;
+    showMessage(`Wave ${wave} — ${count} bloons incoming!`);
+  }
+
+  // Projectiles (darts)
+  function fireProjectile(targetX,targetY){
+    if(player.fireCooldown > 0) return;
+    player.fireCooldown = 1 / player.fireRate;
+    const angle = Math.atan2(targetY-player.y, targetX-player.x);
+    const speed = 800;
+    const pierce = player.level >= GAME_MAX_LEVEL ? 2 : 0; // max level gains pierce
+    const dmg = player.damage * (player.level >= GAME_MAX_LEVEL ? 3 : 1); // triple dmg when maxed
+    state.projectiles.push({
+      x: player.x, y: player.y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed,
+      radius:4, life:1.6, dmg, pierce
+    });
+  }
+
+  // Particles for FX
+  function spawnParticles(x,y,color,count=10){
+    for(let i=0;i<count;i++){
+      state.particles.push({
+        x,y,
+        vx:rand(-140,140), vy:rand(-140,140),
+        life:rand(0.3,1.2), color,
+        size: rand(1,4)
+      });
+    }
+  }
+
+  // Damage player from enemy contact
+  function enemyDamageTick(enemy,dt){
+    // simple collision: if overlapping, apply damage with cooldown
+    const dx = enemy.x - player.x;
+    const dy = enemy.y - player.y;
+    const dist = Math.hypot(dx,dy);
+    if(dist < enemy.size + player.radius){
+      // apply damage per second
+      if(player.invuln <= 0){
+        player.hp -= enemy.dmg;
+        player.invuln = 0.25; // invulnerability frames so multiple hits not insta-kill
+        spawnParticles(player.x, player.y, '#ffb5b5', 8);
+      }
+    }
+  }
+
+  // Input
+  window.addEventListener('keydown', e => {
+    state.keys[e.key.toLowerCase()] = true;
+    if(e.key === 'p' || e.key === 'P') state.running = !state.running;
+    if(e.key === 'r' || e.key === 'R') restartGame();
+  });
+  window.addEventListener('keyup', e => state.keys[e.key.toLowerCase()] = false);
+  canvas.addEventListener('mousemove', e => {
+    const rect = canvas.getBoundingClientRect();
+    state.mouse.x = (e.clientX - rect.left) * (canvas.width / rect.width);
+    state.mouse.y = (e.clientY - rect.top) * (canvas.height / rect.height);
+    player.aimAngle = Math.atan2(state.mouse.y - player.y, state.mouse.x - player.x);
+  });
+  canvas.addEventListener('mousedown', e => {
+    state.mouse.down = true;
+    // fire once immediately
+    fireProjectile(state.mouse.x, state.mouse.y);
+  });
+  window.addEventListener('mouseup', e => state.mouse.down = false);
+  canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    state.mouse.down = true;
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    state.mouse.x = (touch.clientX - rect.left) * (canvas.width / rect.width);
+    state.mouse.y = (touch.clientY - rect.top) * (canvas.height / rect.height);
+    fireProjectile(state.mouse.x, state.mouse.y);
+  }, {passive:false});
+  canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+    state.mouse.x = (touch.clientX - rect.left) * (canvas.width / rect.width);
+    state.mouse.y = (touch.clientY - rect.top) * (canvas.height / rect.height);
+  }, {passive:false});
+  canvas.addEventListener('touchend', e => state.mouse.down = false);
+
+  // HUD
+  function updateHUD(){
+    const stats = document.getElementById('stats');
+    const controls = document.getElementById('controls');
+    const xpNext = player.level < GAME_MAX_LEVEL ? xpToNext(player.level) : 0;
+    stats.innerHTML = `
+      <div style="font-weight:800">Level ${player.level}${player.level===GAME_MAX_LEVEL?' ★MAX★':''}</div>
+      <div style="font-size:13px;color:#9dbbd6">XP: ${player.xp}${player.level<GAME_MAX_LEVEL?` / ${xpNext}`:''}</div>
+      <div style="margin-top:6px">HP: ${Math.max(0,Math.round(player.hp))} / ${player.maxHp}</div>
+      <div style="font-size:13px;color:#9dbbd6">Damage: ${player.damage} • RoF: ${player.fireRate}/s</div>
+      <div style="font-size:12px;color:#9dbbd6">Kills: ${state.killCount}</div>
+    `;
+    controls.innerHTML = `
+      <div style="font-weight:700">Controls</div>
+      <div style="font-size:13px;color:#9dbbd6">Move: WASD / Arrows</div>
+      <div style="font-size:13px;color:#9dbbd6">Aim & Hold Mouse/Tap to shoot</div>
+      <div style="margin-top:6px"><button onclick="window.stateRunningToggle()">Pause</button> <button onclick="window.restartGame()">Restart</button></div>
+    `;
+  }
+  // Expose control helpers for buttons
+  window.stateRunningToggle = () => { state.running = !state.running; };
+  window.restartGame = () => { restartGame(); };
+
+  // Messages
+  function showMessage(text, t=2.5){
+    const el = document.getElementById('waveInfo');
+    el.textContent = text;
+    state.msgTimer = t;
+  }
+
+  // Game flow
+  function nextWave(){
+    state.waveTimer = 0;
+    spawnWave(state.wave + 1);
+  }
+
+  function rewardXP(amount){
+    player.xp += Math.round(amount);
+    while(player.level < GAME_MAX_LEVEL && player.xp >= xpToNext(player.level)){
+      player.xp -= xpToNext(player.level);
+      player.level++;
+      updatePlayerStats();
+      player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp*0.2)); // heal 20% on level
+      showMessage(`Reached level ${player.level}!`);
+      if(player.level === GAME_MAX_LEVEL){
+        showMessage('MAX LEVEL! Monkey becomes extremely strong!', 4);
+      }
+    }
+    // cap XP at final level
+    if(player.level === GAME_MAX_LEVEL) player.xp = 0;
+  }
+
+  // Restart
+  function restartGame(){
+    state.wave = 0;
+    state.enemies = [];
+    state.projectiles = [];
+    state.particles = [];
+    state.killCount = 0;
+    player.level = 1;
+    player.xp = 0;
+    updatePlayerStats();
+    player.hp = player.maxHp;
+    state.waveTimer = 0;
+    nextWave();
+  }
+
+  // Start first wave
+  spawnWave(0);
+  state.waveTimer = 0;
+  nextWave();
+
+  // Main loop
+  function tick(){
+    const now = performance.now()/1000;
+    let dt = Math.min(0.05, now - state.lastTime);
+    state.lastTime = now;
+    if(!state.running){ draw(); requestAnimationFrame(tick); return; }
+
+    // Timers
+    if(player.fireCooldown > 0) player.fireCooldown = Math.max(0, player.fireCooldown - dt);
+    if(player.invuln > 0) player.invuln = Math.max(0, player.invuln - dt);
+    if(state.msgTimer > 0) state.msgTimer = Math.max(0, state.msgTimer - dt);
+    // Auto-fire if mouse held
+    if(state.mouse.down) fireProjectile(state.mouse.x, state.mouse.y);
+
+    // Input -> move
+    let dx = 0, dy = 0;
+    if(state.keys['w']||state.keys['arrowup']) dy -= 1;
+    if(state.keys['s']||state.keys['arrowdown']) dy += 1;
+    if(state.keys['a']||state.keys['arrowleft']) dx -= 1;
+    if(state.keys['d']||state.keys['arrowright']) dx += 1;
+    if(dx!==0 || dy!==0){
+      const len = Math.hypot(dx,dy);
+      dx/=len; dy/=len;
+      player.x += dx * player.speed * dt;
+      player.y += dy * player.speed * dt;
+    }
+    // keep inside
+    player.x = clamp(player.x, 10, canvas.width-10);
+    player.y = clamp(player.y, 10, canvas.height-10);
+
+    // Update projectiles
+    for(let i=state.projectiles.length-1;i>=0;i--){
+      const p = state.projectiles[i];
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.life -= dt;
+      if(p.life <= 0 || p.x < -50 || p.y < -50 || p.x > canvas.width+50 || p.y > canvas.height+50){
+        state.projectiles.splice(i,1);
+        continue;
+      }
+      // collide with enemies
+      for(let j=state.enemies.length-1;j>=0 && j>=0;j--){
+        const e = state.enemies[j];
+        const dx = p.x - e.x, dy = p.y - e.y;
+        if(Math.hypot(dx,dy) < e.size + p.radius){
+          // hit
+          e.hp -= p.dmg;
+          spawnParticles(p.x, p.y, e.color, 6);
+          if(p.pierce>0){
+            p.pierce--;
+          } else {
+            state.projectiles.splice(i,1);
+          }
+          if(e.hp <= 0){
+            // enemy dies
+            spawnParticles(e.x, e.y, e.color, 18);
+            state.enemies.splice(j,1);
+            state.killCount++;
+            // reward XP based on enemy maxHp & wave
+            rewardXP(e.maxHp * 0.9 + e.score*8);
+            // small chance to drop heal
+            if(Math.random() < 0.07){
+              player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp*0.12));
+              showMessage('Healed by a dropped banana!');
+            }
+          }
+          break; // projectile can hit at most one enemy per iteration unless pierced
+        }
+      }
+    }
+
+    // Update enemies
+    for(let i=state.enemies.length-1;i>=0;i--){
+      const e = state.enemies[i];
+      // move toward player
+      const ang = Math.atan2(player.y - e.y, player.x - e.x);
+      e.vx = Math.cos(ang) * e.speed;
+      e.vy = Math.sin(ang) * e.speed;
+      e.x += e.vx * dt;
+      e.y += e.vy * dt;
+      // enemy collision to damage player
+      enemyDamageTick(e, dt);
+      // if enemy offscreen past a lot, reposition (avoid stuck)
+      if(e.x < -120 || e.y < -120 || e.x > canvas.width+120 || e.y > canvas.height+120){
+        // respawn near edge
+        const n = spawnEnemy(state.wave);
+        e.x = n.x; e.y = n.y; e.hp = n.hp; e.maxHp=n.maxHp; e.size=n.size; e.color=n.color; e.speed=n.speed; e.dmg=n.dmg;
+      }
+    }
+
+    // Update particles
+    for(let i=state.particles.length-1;i>=0;i--){
+      const p = state.particles[i];
+      p.life -= dt;
+      if(p.life <= 0) { state.particles.splice(i,1); continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vy += 200 * dt; // gravity
+    }
+
+    // Wave end?
+    if(state.enemies.length === 0){
+      state.waveTimer += dt;
+      if(state.waveTimer >= state.waveDelay){
+        nextWave();
+      } else {
+        showMessage(`Next wave in ${Math.ceil(state.waveDelay - state.waveTimer)}s`, 1.0);
+      }
+    }
+
+    // Player death
+    if(player.hp <= 0){
+      player.hp = 0;
+      state.running = false;
+      showMessage('You were popped! Press Restart (R) to try again.', 999);
+    }
+
+    updateHUD();
+    draw();
+    requestAnimationFrame(tick);
+  }
+
+  // Draw
+  function draw(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    // background gradient
+    const g = ctx.createLinearGradient(0,0,0,canvas.height);
+    g.addColorStop(0,'#071022'); g.addColorStop(1,'#05131a');
+    ctx.fillStyle = g;
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // particles
+    for(const p of state.particles){
+      ctx.globalAlpha = clamp(p.life,0,1);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    // enemies (draw behind player)
+    for(const e of state.enemies){
+      // shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath(); ctx.ellipse(e.x+4,e.y+6, e.size*1.05, e.size*0.6, 0, 0, Math.PI*2); ctx.fill();
+      // body
+      ctx.fillStyle = e.color;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.size, 0, Math.PI*2); ctx.fill();
+      // HP bar
+      const w = e.size*2;
+      const hpPct = clamp(e.hp / e.maxHp, 0, 1);
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(e.x - w/2, e.y - e.size - 10, w, 5);
+      ctx.fillStyle = '#9fe4a6';
+      ctx.fillRect(e.x - w/2, e.y - e.size - 10, w * hpPct, 5);
+    }
+
+    // player
+    // shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.ellipse(player.x+4, player.y+6, player.radius*1.25, player.radius*0.7, 0, 0, Math.PI*2); ctx.fill();
+
+    // body
+    const bodyColor = player.level === GAME_MAX_LEVEL ? '#ffd14d' : '#ffde7d';
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath(); ctx.arc(player.x, player.y, player.radius, 0, Math.PI*2); ctx.fill();
+
+    // face / eyes
+    ctx.fillStyle = '#5b3e20';
+    ctx.beginPath(); ctx.arc(player.x - 6, player.y - 3, 4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(player.x + 6, player.y - 3, 4, 0, Math.PI*2); ctx.fill();
+
+    // weapon aim indicator
+    const aimX = player.x + Math.cos(player.aimAngle || 0) * (player.radius+8);
+    const aimY = player.y + Math.sin(player.aimAngle || 0) * (player.radius+8);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.beginPath(); ctx.moveTo(player.x,player.y); ctx.lineTo(aimX,aimY); ctx.stroke();
+
+    // projectiles
+    for(const p of state.projectiles){
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.radius, 0, Math.PI*2); ctx.fill();
+    }
+
+    // HUD overlay: health bar, xp bar
+    // health
+    const hbX = 16, hbY = canvas.height - 42, hbW = 300, hbH=14;
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(hbX-2,hbY-2,hbW+4,hbH+4);
+    ctx.fillStyle = '#2b2b2b'; ctx.fillRect(hbX,hbY,hbW,hbH);
+    const hpPct = clamp(player.hp / player.maxHp, 0, 1);
+    ctx.fillStyle = '#ff6961'; ctx.fillRect(hbX,hbY,hbW*hpPct,hbH);
+    ctx.fillStyle = '#cfeaf0'; ctx.font = '12px system-ui'; ctx.fillText(`HP ${Math.round(player.hp)} / ${player.maxHp}`, hbX + 8, hbY + hbH - 2);
+
+    // XP bar
+    const xbX = hbX, xbY = hbY - 18, xbW = 300, xbH = 10;
+    ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(xbX-2,xbY-2,xbW+4,xbH+4);
+    ctx.fillStyle = '#153144'; ctx.fillRect(xbX,xbY,xbW,xbH);
+    const xpNext = player.level < GAME_MAX_LEVEL ? xpToNext(player.level) : 1;
+    const xpPct = player.level < GAME_MAX_LEVEL ? clamp(player.xp / xpNext, 0, 1) : 1;
+    ctx.fillStyle = '#6bf0b1'; ctx.fillRect(xbX, xbY, xbW * xpPct, xbH);
+    ctx.fillStyle = '#cfeaf0'; ctx.font = '11px system-ui'; ctx.fillText(player.level < GAME_MAX_LEVEL ? `XP ${Math.round(player.xp)} / ${xpNext}` : 'MAX LEVEL', xbX + 8, xbY + xbH - 1);
+
+    // center message
+    if(state.msgTimer > 0){
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.font = '18px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(document.getElementById('waveInfo').textContent, canvas.width/2, 36);
+      ctx.textAlign = 'start';
+    }
+
+    // wave indicator top-right
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(canvas.width - 160, 12, 140, 40);
+    ctx.fillStyle = '#cfeaf0'; ctx.font = '16px system-ui';
+    ctx.fillText(`Wave ${state.wave}`, canvas.width - 140, 36);
+
+    // paused overlay
+    if(!state.running){
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle = '#fff';
+      ctx.font = '28px system-ui';
+      ctx.textAlign = 'center';
+      ctx.fillText(player.hp <= 0 ? 'You were popped!' : 'Paused', canvas.width/2, canvas.height/2 - 10);
+      ctx.font = '14px system-ui';
+      ctx.fillText('Press R to restart or click Restart below', canvas.width/2, canvas.height/2 + 18);
+      ctx.textAlign = 'start';
+    }
+  }
+
+  // initial HUD
+  updateHUD();
+
+  // request animation frame loop
+  requestAnimationFrame(tick);
+})();
+</script>
+
+<div style="width:900px;margin:18px auto 40px;color:#9fbddf;font-size:14px">
+  <div style="font-weight:800">How to play</div>
+  <div>Move with WASD or arrow keys. Aim with your mouse / touch. Hold mouse to auto-fire darts. Kill bloons to gain XP — leveling improves HP, damage, and fire-rate. Max level is 20 (at level 20 you become extremely strong: triple damage and pierce on darts, and max HP scales to 2000).</div>
+  <div style="margin-top:8px"><strong>Notes:</strong> Bloons get stronger each wave (more HP, more damage). If you die press R to restart.</div>
+  <div style="margin-top:10px"><small class="hint">Tip: Survive early waves and level quickly to handle later waves — max level makes you very powerful.</small></div>
+</div>

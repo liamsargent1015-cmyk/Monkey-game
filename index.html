@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MONKEYS - Bloon Slayer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        #startMenu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            flex-direction: column;
+        }
+
+        #startMenu.hidden {
+            display: none;
+        }
+
+        .menu-container {
+            text-align: center;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 60px;
+            border-radius: 20px;
+            box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+        }
+
+        h1 {
+            color: #fff;
+            font-size: 72px;
+            margin-bottom: 30px;
+            text-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            letter-spacing: 5px;
+            font-weight: bold;
+        }
+
+        .menu-container p {
+            color: #ffff00;
+            font-size: 22px;
+            margin-bottom: 30px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 40px;
+        }
+
+        button {
+            padding: 20px 50px;
+            font-size: 24px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .map-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            min-width: 250px;
+        }
+
+        .map-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(245, 87, 108, 0.6);
+        }
+
+        #gameUI {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .stats-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            border: 2px solid #00ff00;
+        }
+
+        .level-info {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            font-size: 20px;
+            font-weight: bold;
+            border: 2px solid #ffff00;
+            text-align: right;
+        }
+
+        .xp-bar-container {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 400px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #00ff00;
+            border-radius: 10px;
+            padding: 10px;
+        }
+
+        .xp-bar {
+            width: 100%;
+            height: 30px;
+            background: #333;
+            border-radius: 5px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .xp-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff00, #ffff00);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .xp-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #fff;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px #000;
+            font-size: 14px;
+        }
+
+        #gameOver {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.95);
+            color: #fff;
+            padding: 60px;
+            border-radius: 20px;
+            text-align: center;
+            z-index: 999;
+            display: none;
+            border: 3px solid #ff0000;
+        }
+
+        .game-over-text {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #ff0000;
+        }
+
+        .game-over-stats {
+            font-size: 24px;
+            margin: 20px 0;
+            color: #ffff00;
+        }
+
+        .restart-btn {
+            margin-top: 30px;
+            padding: 20px 40px;
+            font-size: 20px;
+            background: #00ff00;
+            color: #000;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            pointer-events: all;
+        }
+
+        .restart-btn:hover {
+            background: #00dd00;
+        }
+
+        .weapon-display {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 20px;
+            border-radius: 10px;
+            font-size: 18px;
+            border: 2px solid #ff00ff;
+            text-align: right;
+        }
+
+        .round-indicator {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: #ff6600;
+            padding: 15px 30px;
+            border-radius: 10px;
+            font-size: 24px;
+            font-weight: bold;
+            border: 2px solid #ff6600;
+        }
+
+        .wave-notification {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 48px;
+            color: #ff0000;
+            font-weight: bold;
+            text-shadow: 0 0 20px #ff0000;
+            z-index: 500;
+            animation: fadeInOut 3s ease-in-out;
+        }
+
+        @keyframes fadeInOut {
+            0%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+        }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 80px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 14px;
+            border: 1px solid #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <div id="startMenu">
+        <div class="menu-container">
+            <h1>🐵 MONKEYS 🐵</h1>
+            <p>Bloon Slayer 3D</p>
+            <p>Select Your Battleground:</p>
+            <div class="button-group">
+                <button class="map-btn" onclick="startGame('beach')">🏖️ BEACH</button>
+                <button class="map-btn" onclick="startGame('grassland')">🌳 GRASSLAND</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="gameUI">
+        <div class="stats-panel">
+            <div>❤️ HP: <span id="hpDisplay">100</span></div>
+            <div>💀 Kills: <span id="killsDisplay">0</span></div>
+        </div>
+
+        <div class="level-info">
+            <div>⭐ LEVEL: <span id="levelDisplay">1</span>/10</div>
+            <div id="weaponName" style="margin-top: 10px; font-size: 16px;">Fist</div>
+        </div>
+
+        <div class="round-indicator">
+            🎪 Round: <span id="roundDisplay">1</span>/80
+        </div>
+
+        <div class="weapon-display">
+            <div>⚔️ Damage: <span id="damageDisplay">10</span></div>
+            <div style="margin-top: 5px;">⚡ Speed: <span id="speedDisplay">1x</span></div>
+        </div>
+
+        <div class="xp-bar-container">
+            <div class="xp-bar">
+                <div class="xp-fill" id="xpFill"></div>
+                <div class="xp-text"><span id="xpText">0/100 XP</span></div>
+            </div>
+        </div>
+
+        <div class="controls-hint">
+            <div>WASD - Move | Mouse - Look | Click - Attack</div>
+            <div>Space - Jump</div>
+        </div>
+    </div>
+
+    <div id="gameOver">
+        <div class="game-over-text">GAME OVER!</div>
+        <div class="game-over-stats">
+            <div>🎪 Round Reached: <span id="finalRound">1</span></div>
+            <div>⭐ Level Reached: <span id="finalLevel">1</span></div>
+            <div>💀 Total Kills: <span id="finalKills">0</span></div>
+        </div>
+        <button class="restart-btn" onclick="location.reload()">RESTART GAME</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="game.js"></script>
+</body>
+</html>

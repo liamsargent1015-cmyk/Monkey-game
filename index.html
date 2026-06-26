@@ -2,19 +2,24 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
     <title>MONKEYS - Bloon Slayer</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-touch-callout: none;
         }
 
-        body {
+        html, body {
+            width: 100%;
+            height: 100%;
             font-family: Arial, sans-serif;
-            overflow: hidden;
             background: #000;
+            overflow: hidden;
         }
 
         canvas {
@@ -23,6 +28,7 @@
             height: 100%;
         }
 
+        /* START MENU */
         #startMenu {
             position: fixed;
             top: 0;
@@ -44,55 +50,61 @@
         .menu-container {
             text-align: center;
             background: rgba(0, 0, 0, 0.7);
-            padding: 60px;
+            padding: 40px 30px;
             border-radius: 20px;
             box-shadow: 0 0 50px rgba(0, 0, 0, 0.5);
+            width: 90%;
+            max-width: 500px;
         }
 
         h1 {
             color: #fff;
-            font-size: 72px;
-            margin-bottom: 30px;
+            font-size: 56px;
+            margin-bottom: 20px;
             text-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
-            letter-spacing: 5px;
-            font-weight: bold;
+            letter-spacing: 3px;
         }
 
-        .menu-container p {
+        .menu-subtitle {
             color: #ffff00;
-            font-size: 22px;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+
+        .menu-desc {
+            color: #fff;
+            font-size: 14px;
             margin-bottom: 30px;
         }
 
         .button-group {
             display: flex;
-            gap: 20px;
+            gap: 15px;
             justify-content: center;
-            margin-top: 40px;
+            margin-top: 30px;
+            flex-direction: column;
         }
 
-        button {
-            padding: 20px 50px;
-            font-size: 24px;
+        .map-btn {
+            padding: 18px 40px;
+            font-size: 18px;
             border: none;
             border-radius: 10px;
             cursor: pointer;
             transition: all 0.3s ease;
             font-weight: bold;
             text-transform: uppercase;
-        }
-
-        .map-btn {
             background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
             color: white;
-            min-width: 250px;
+            width: 100%;
+            touch-action: manipulation;
         }
 
-        .map-btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 0 30px rgba(245, 87, 108, 0.6);
+        .map-btn:active {
+            transform: scale(0.95);
         }
 
+        /* GAME UI */
         #gameUI {
             position: fixed;
             top: 0;
@@ -104,48 +116,80 @@
 
         .stats-panel {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.8);
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.85);
             color: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            font-size: 18px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
             font-weight: bold;
             border: 2px solid #00ff00;
+            z-index: 100;
         }
 
         .level-info {
             position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.8);
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.85);
             color: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            font-size: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
             font-weight: bold;
             border: 2px solid #ffff00;
             text-align: right;
+            z-index: 100;
+        }
+
+        .round-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.85);
+            color: #ff6600;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 18px;
+            font-weight: bold;
+            border: 2px solid #ff6600;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        .weapon-display {
+            position: absolute;
+            bottom: 160px;
+            right: 15px;
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            border: 2px solid #ff00ff;
+            text-align: right;
+            z-index: 100;
         }
 
         .xp-bar-container {
             position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: 400px;
-            background: rgba(0, 0, 0, 0.8);
+            bottom: 210px;
+            left: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.85);
             border: 2px solid #00ff00;
-            border-radius: 10px;
-            padding: 10px;
+            border-radius: 8px;
+            padding: 8px;
+            z-index: 100;
         }
 
         .xp-bar {
             width: 100%;
-            height: 30px;
+            height: 20px;
             background: #333;
-            border-radius: 5px;
+            border-radius: 4px;
             overflow: hidden;
             position: relative;
         }
@@ -162,126 +206,197 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            color: #fff;
+            color: #000;
             font-weight: bold;
-            text-shadow: 1px 1px 2px #000;
-            font-size: 14px;
+            font-size: 11px;
         }
 
+        /* MOBILE CONTROLS */
+        .mobile-controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 10px;
+            display: flex;
+            gap: 10px;
+            justify-content: space-around;
+            align-items: center;
+            z-index: 100;
+            border-top: 2px solid #ff6600;
+        }
+
+        .control-btn {
+            flex: 1;
+            padding: 15px 10px;
+            border: 2px solid #fff;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            font-weight: bold;
+            font-size: 13px;
+            cursor: pointer;
+            touch-action: manipulation;
+            transition: all 0.1s ease;
+            text-transform: uppercase;
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .control-btn:active {
+            transform: scale(0.95);
+            box-shadow: 0 0 20px rgba(245, 87, 108, 0.8);
+        }
+
+        .direction-btn {
+            flex: 0.8;
+            padding: 12px 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .attack-btn {
+            flex: 1.5;
+            background: linear-gradient(135deg, #ff0000 0%, #ff6600 100%);
+            min-height: 60px;
+            font-size: 16px;
+        }
+
+        .joystick-container {
+            position: absolute;
+            bottom: 90px;
+            left: 15px;
+            width: 100px;
+            height: 100px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 2px solid #00ff00;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            touch-action: none;
+        }
+
+        .joystick-knob {
+            width: 50px;
+            height: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            position: absolute;
+            left: 25px;
+            top: 25px;
+            transition: all 0.05s ease;
+        }
+
+        /* GAME OVER */
         #gameOver {
             position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             background: rgba(0, 0, 0, 0.95);
-            color: #fff;
-            padding: 60px;
-            border-radius: 20px;
-            text-align: center;
-            z-index: 999;
             display: none;
+            z-index: 999;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        #gameOver.show {
+            display: flex;
+        }
+
+        .game-over-content {
+            background: rgba(0, 0, 0, 0.9);
             border: 3px solid #ff0000;
+            border-radius: 20px;
+            padding: 30px;
+            text-align: center;
+            width: 100%;
+            max-width: 400px;
         }
 
         .game-over-text {
-            font-size: 48px;
+            font-size: 40px;
             margin-bottom: 20px;
             color: #ff0000;
+            font-weight: bold;
         }
 
         .game-over-stats {
-            font-size: 24px;
-            margin: 20px 0;
+            font-size: 16px;
+            margin: 15px 0;
             color: #ffff00;
         }
 
         .restart-btn {
-            margin-top: 30px;
-            padding: 20px 40px;
-            font-size: 20px;
+            margin-top: 25px;
+            padding: 18px 40px;
+            font-size: 18px;
             background: #00ff00;
             color: #000;
             border: none;
             border-radius: 10px;
             cursor: pointer;
-            pointer-events: all;
+            font-weight: bold;
+            text-transform: uppercase;
+            width: 100%;
+            touch-action: manipulation;
         }
 
-        .restart-btn:hover {
+        .restart-btn:active {
             background: #00dd00;
+            transform: scale(0.95);
         }
 
-        .weapon-display {
-            position: absolute;
-            bottom: 20px;
-            right: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            color: #fff;
-            padding: 20px;
-            border-radius: 10px;
-            font-size: 18px;
-            border: 2px solid #ff00ff;
-            text-align: right;
-        }
+        /* Responsive */
+        @media (max-width: 600px) {
+            h1 {
+                font-size: 42px;
+            }
 
-        .round-indicator {
-            position: absolute;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.8);
-            color: #ff6600;
-            padding: 15px 30px;
-            border-radius: 10px;
-            font-size: 24px;
-            font-weight: bold;
-            border: 2px solid #ff6600;
-        }
+            .menu-container {
+                padding: 30px 20px;
+            }
 
-        .wave-notification {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-size: 48px;
-            color: #ff0000;
-            font-weight: bold;
-            text-shadow: 0 0 20px #ff0000;
-            z-index: 500;
-            animation: fadeInOut 3s ease-in-out;
-        }
+            .stats-panel, .level-info, .weapon-display {
+                font-size: 12px;
+                padding: 8px;
+            }
 
-        @keyframes fadeInOut {
-            0%, 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
-            50% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-        }
+            .control-btn {
+                padding: 12px 8px;
+                font-size: 12px;
+                min-height: 45px;
+            }
 
-        .controls-hint {
-            position: absolute;
-            bottom: 80px;
-            left: 20px;
-            background: rgba(0, 0, 0, 0.8);
-            color: #00ff00;
-            padding: 15px;
-            border-radius: 10px;
-            font-size: 14px;
-            border: 1px solid #00ff00;
+            .attack-btn {
+                min-height: 55px;
+            }
         }
     </style>
 </head>
 <body>
+    <!-- START MENU -->
     <div id="startMenu">
         <div class="menu-container">
             <h1>🐵 MONKEYS 🐵</h1>
-            <p>Bloon Slayer 3D</p>
-            <p>Select Your Battleground:</p>
+            <p class="menu-subtitle">Bloon Slayer 3D</p>
+            <p class="menu-desc">Select Your Battleground:</p>
             <div class="button-group">
-                <button class="map-btn" onclick="startGame('beach')">🏖️ BEACH</button>
-                <button class="map-btn" onclick="startGame('grassland')">🌳 GRASSLAND</button>
+                <button class="map-btn" ontouchstart="" onclick="startGame('beach')">🏖️ BEACH</button>
+                <button class="map-btn" ontouchstart="" onclick="startGame('grassland')">🌳 GRASSLAND</button>
             </div>
         </div>
     </div>
 
+    <!-- GAME UI -->
     <div id="gameUI">
         <div class="stats-panel">
             <div>❤️ HP: <span id="hpDisplay">100</span></div>
@@ -289,8 +404,8 @@
         </div>
 
         <div class="level-info">
-            <div>⭐ LEVEL: <span id="levelDisplay">1</span>/10</div>
-            <div id="weaponName" style="margin-top: 10px; font-size: 16px;">Fist</div>
+            <div>⭐ LVL: <span id="levelDisplay">1</span>/10</div>
+            <div id="weaponName" style="margin-top: 5px; font-size: 12px;">Fist</div>
         </div>
 
         <div class="round-indicator">
@@ -298,31 +413,43 @@
         </div>
 
         <div class="weapon-display">
-            <div>⚔️ Damage: <span id="damageDisplay">10</span></div>
-            <div style="margin-top: 5px;">⚡ Speed: <span id="speedDisplay">1x</span></div>
+            <div>⚔️ DMG: <span id="damageDisplay">10</span></div>
+            <div style="margin-top: 3px;">⚡ SPD: <span id="speedDisplay">1x</span></div>
         </div>
 
         <div class="xp-bar-container">
             <div class="xp-bar">
                 <div class="xp-fill" id="xpFill"></div>
-                <div class="xp-text"><span id="xpText">0/100 XP</span></div>
+                <div class="xp-text"><span id="xpText">0/100</span></div>
             </div>
         </div>
 
-        <div class="controls-hint">
-            <div>WASD - Move | Mouse - Look | Click - Attack</div>
-            <div>Space - Jump</div>
+        <!-- JOYSTICK -->
+        <div class="joystick-container" id="joystickContainer">
+            <div class="joystick-knob" id="joystickKnob"></div>
+        </div>
+
+        <!-- MOBILE CONTROLS -->
+        <div class="mobile-controls">
+            <button class="control-btn direction-btn" id="leftBtn" ontouchstart="moveLeft=true" ontouchend="moveLeft=false" onmousedown="moveLeft=true" onmouseup="moveLeft=false">◀ LEFT</button>
+            <button class="control-btn direction-btn" id="upBtn" ontouchstart="moveUp=true" ontouchend="moveUp=false" onmousedown="moveUp=true" onmouseup="moveUp=false">▲ UP</button>
+            <button class="control-btn direction-btn" id="rightBtn" ontouchstart="moveRight=true" ontouchend="moveRight=false" onmousedown="moveRight=true" onmouseup="moveRight=false">▶ RIGHT</button>
+            <button class="control-btn direction-btn" id="downBtn" ontouchstart="moveDown=true" ontouchend="moveDown=false" onmousedown="moveDown=true" onmouseup="moveDown=false">▼ DOWN</button>
+            <button class="control-btn attack-btn" id="attackBtn" ontouchstart="isAttacking=true" ontouchend="isAttacking=false" onmousedown="isAttacking=true" onmouseup="isAttacking=false">⚔️ ATTACK</button>
         </div>
     </div>
 
+    <!-- GAME OVER -->
     <div id="gameOver">
-        <div class="game-over-text">GAME OVER!</div>
-        <div class="game-over-stats">
-            <div>🎪 Round Reached: <span id="finalRound">1</span></div>
-            <div>⭐ Level Reached: <span id="finalLevel">1</span></div>
-            <div>💀 Total Kills: <span id="finalKills">0</span></div>
+        <div class="game-over-content">
+            <div class="game-over-text">GAME OVER!</div>
+            <div class="game-over-stats">
+                <div>🎪 Round: <span id="finalRound">1</span></div>
+                <div>⭐ Level: <span id="finalLevel">1</span></div>
+                <div>💀 Kills: <span id="finalKills">0</span></div>
+            </div>
+            <button class="restart-btn" ontouchstart="" onclick="location.reload()">RESTART</button>
         </div>
-        <button class="restart-btn" onclick="location.reload()">RESTART GAME</button>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
